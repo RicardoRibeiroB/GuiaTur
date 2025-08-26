@@ -29,12 +29,16 @@ Este projeto tem como objetivo desenvolver um aplicativo mobile completo para ce
 ### Backend
 - **Node.js** `v18.17.0`
 - **Express.js** `v4.18.2`
-- **MongoDB** `v6.0`
-- **Mongoose** `v7.5.0`
-- **JWT** `v9.0.2`
-- **Bcrypt** `v5.1.0`
-- **Multer** `v1.4.5`
-- **Cors** `v2.8.5`
+- **MongoDB Atlas** - Database em nuvem
+- **Mongoose** `v7.5.0` - ODM para MongoDB
+- **JWT** `v9.0.2` - Autenticação
+- **Bcrypt** `v5.1.0` - Hash de senhas
+- **Multer** `v1.4.5` - Upload de arquivos
+- **Cloudinary** `v1.40.0` - Armazenamento de imagens
+- **Cors** `v2.8.5` - Cross-Origin Resource Sharing
+- **Dotenv** `v16.3.1` - Variáveis de ambiente
+- **Express-rate-limit** `v6.10.0` - Rate limiting
+- **Helmet** `v7.0.0` - Segurança HTTP
 
 ### Ferramentas de Desenvolvimento
 - **ESLint**: Linting de código
@@ -47,8 +51,11 @@ Este projeto tem como objetivo desenvolver um aplicativo mobile completo para ce
 ## 🌐 Links Úteis
 Aqui estão alguns links importantes para facilitar o acesso às ferramentas e informações relacionadas ao projeto:
 
+- [Repositório Frontend](https://github.com/equipe-guiatur/guiatur-frontend)
+- [Repositório Backend](https://github.com/equipe-guiatur/guiatur-backend)
 - [Jira Software](https://guiatur.atlassian.net/jira/software/projects/GT/boards/1)
 - [Figma - Protótipos](https://www.figma.com/design/RbU7KABp5S96A9UwncgBXQ/Untitled?node-id=0-1&p=f&t=9jWoWvVagVbmnrFf-0)
+
 ---
 
 ## Fluxo de Trabalho: Commits e Branches
@@ -269,9 +276,10 @@ src/
 │   ├── validators.js
 │   └── constants.js
 ├── config/              # Configurações
-│   ├── database.js
-│   ├── cloudinary.js
-│   └── env.js
+│   ├── database.js      # Configuração MongoDB Atlas
+│   ├── cloudinary.js    # Configuração Cloudinary
+│   ├── auth.js          # Configuração JWT
+│   └── env.js           # Validação de variáveis ambiente
 └── tests/               # Testes automatizados
     ├── unit/
     ├── integration/
@@ -606,6 +614,273 @@ const LoginScreen = () => {
 
 ## 🔧 Configuração do Ambiente
 
+### Variáveis de Ambiente (.env)
+```bash
+# MongoDB Atlas
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/guiatur?retryWrites=true&w=majority
+DB_NAME=guiatur
+
+# JWT
+JWT_SECRET=seu_jwt_secret_super_seguro_aqui
+JWT_EXPIRES_IN=7d
+
+# Cloudinary (Upload de imagens)
+CLOUDINARY_CLOUD_NAME=seu_cloud_name
+CLOUDINARY_API_KEY=sua_api_key
+CLOUDINARY_API_SECRET=sua_api_secret
+
+# Server
+PORT=3000
+NODE_ENV=development
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+```
+
+### Configuração MongoDB Atlas (config/database.js)
+```javascript
+const mongoose = require('mongoose');
+
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+
+    console.log(`MongoDB Connected: ${conn.connection.host}`);
+  } catch (error) {
+    console.error('Erro ao conectar com MongoDB:', error.message);
+    process.exit(1);
+  }
+};
+
+// Eventos de conexão
+mongoose.connection.on('connected', () => {
+  console.log('Mongoose conectado ao MongoDB Atlas');
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('Erro na conexão Mongoose:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('Mongoose desconectado');
+});
+
+module.exports = connectDB;
+```
+
+### Modelos MongoDB (Exemplos)
+
+#### User Model (models/User.js)
+```javascript
+const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
+
+const userSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: [true, 'Nome é obrigatório'],
+    trim: true,
+    maxlength: [100, 'Nome não pode ter mais de 100 caracteres']
+  },
+  email: {
+    type: String,
+    required: [true, 'Email é obrigatório'],
+    unique: true,
+    lowercase: true,
+    match: [/^\S+@\S+\.\S+$/, 'Email inválido']
+  },
+  password: {
+    type: String,
+    required: [true, 'Senha é obrigatória'],
+    minlength: [6, 'Senha deve ter pelo menos 6 caracteres']
+  },
+  userType: {
+    type: String,
+    enum: ['usuario_comum', 'promotor_turistico', 'host_turistico', 'administrador'],
+    default: 'usuario_comum'
+  },
+  profileImage: {
+    type: String,
+    default: null
+  },
+  location: {
+    city: String,
+    state: String,
+    coordinates: {
+      lat: Number,
+      lng: Number
+    }
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  emailVerified: {
+    type: Boolean,
+    default: false
+  }
+}, {
+  timestamps: true
+});
+
+// Hash da senha antes de salvar
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
+  
+  try {
+    const salt = await bcrypt.genSalt(12);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Método para comparar senhas
+userSchema.methods.comparePassword = async function(candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
+};
+
+// Remover senha do JSON response
+userSchema.methods.toJSON = function() {
+  const user = this.toObject();
+  delete user.password;
+  return user;
+};
+
+module.exports = mongoose.model('User', userSchema);
+```
+
+#### Route Model (models/Route.js)
+```javascript
+const mongoose = require('mongoose');
+
+const routeSchema = new mongoose.Schema({
+  title: {
+    type: String,
+    required: [true, 'Título é obrigatório'],
+    trim: true,
+    maxlength: [200, 'Título não pode ter mais de 200 caracteres']
+  },
+  description: {
+    type: String,
+    required: [true, 'Descrição é obrigatória'],
+    maxlength: [2000, 'Descrição não pode ter mais de 2000 caracteres']
+  },
+  category: {
+    type: String,
+    enum: ['rural', 'cultural', 'aventura', 'gastronomico', 'religioso', 'historico'],
+    required: true
+  },
+  difficulty: {
+    type: String,
+    enum: ['facil', 'moderado', 'dificil'],
+    default: 'facil'
+  },
+  duration: {
+    type: Number, // em horas
+    required: true
+  },
+  price: {
+    min: {
+      type: Number,
+      default: 0
+    },
+    max: {
+      type: Number,
+      default: 0
+    }
+  },
+  location: {
+    city: {
+      type: String,
+      required: true
+    },
+    state: {
+      type: String,
+      required: true
+    },
+    region: String,
+    coordinates: {
+      lat: Number,
+      lng: Number
+    }
+  },
+  waypoints: [{
+    name: {
+      type: String,
+      required: true
+    },
+    description: String,
+    coordinates: {
+      lat: Number,
+      lng: Number
+    },
+    images: [String],
+    estimatedTime: Number, // minutos no local
+    order: {
+      type: Number,
+      required: true
+    }
+  }],
+  images: [String], // URLs das imagens no Cloudinary
+  author: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  likes: [{
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  rating: {
+    average: {
+      type: Number,
+      default: 0
+    },
+    count: {
+      type: Number,
+      default: 0
+    }
+  },
+  tags: [String],
+  isPublic: {
+    type: Boolean,
+    default: true
+  },
+  isApproved: {
+    type: Boolean,
+    default: false
+  }
+}, {
+  timestamps: true
+});
+
+// Índices para melhor performance
+routeSchema.index({ 'location.city': 1, 'location.state': 1 });
+routeSchema.index({ category: 1 });
+routeSchema.index({ author: 1 });
+routeSchema.index({ 'rating.average': -1 });
+routeSchema.index({ createdAt: -1 });
+
+// Método virtual para contagem de likes
+routeSchema.virtual('likesCount').get(function() {
+  return this.likes.length;
+});
+
+module.exports = mongoose.model('Route', routeSchema);
+```
+
 ### ESLint (.eslintrc.js)
 ```javascript
 module.exports = {
@@ -629,7 +904,191 @@ module.exports = {
 };
 ```
 
-### Prettier (.prettierrc)
+### Configuração do Servidor (server.js)
+```javascript
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const morgan = require('morgan');
+require('dotenv').config();
+
+const connectDB = require('./config/database');
+const errorHandler = require('./middleware/errorMiddleware');
+
+// Importar rotas
+const authRoutes = require('./routes/authRoutes');
+const routeRoutes = require('./routes/routeRoutes');
+const userRoutes = require('./routes/userRoutes');
+
+const app = express();
+
+// Conectar ao MongoDB Atlas
+connectDB();
+
+// Middlewares de segurança
+app.use(helmet());
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://guiatur.com'] 
+    : ['http://localhost:3000', 'exp://localhost:19000'],
+  credentials: true
+}));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  message: {
+    error: 'Muitas requisições. Tente novamente em alguns minutos.'
+  }
+});
+app.use('/api', limiter);
+
+// Middlewares gerais
+app.use(morgan('combined'));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// Rotas da API
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/routes', routeRoutes);
+app.use('/api/v1/users', userRoutes);
+
+// Rota de health check
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV 
+  });
+});
+
+// Middleware de tratamento de erros
+app.use(errorHandler);
+
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({ 
+    success: false, 
+    message: 'Rota não encontrada' 
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  console.log(`🌍 Ambiente: ${process.env.NODE_ENV}`);
+});
+
+module.exports = app;
+```
+
+### Middleware de Autenticação (middleware/authMiddleware.js)
+```javascript
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+const authenticateToken = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Token de acesso requerido' 
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    const user = await User.findById(decoded.id).select('-password');
+    if (!user || !user.isActive) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Usuário não encontrado ou inativo' 
+      });
+    }
+
+    req.user = user;
+    next();
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Token expirado' 
+      });
+    }
+    
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Token inválido' 
+    });
+  }
+};
+
+const authorize = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Acesso não autorizado' 
+      });
+    }
+
+    if (!roles.includes(req.user.userType)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Permissão insuficiente' 
+      });
+    }
+
+    next();
+  };
+};
+
+module.exports = { authenticateToken, authorize };
+```
+
+### Package.json (Backend)
+```json
+{
+  "name": "guiatur-backend",
+  "version": "1.0.0",
+  "description": "API Backend para aplicativo GuiaTur",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^7.5.0",
+    "bcrypt": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.0.0",
+    "dotenv": "^16.3.1",
+    "multer": "^1.4.5",
+    "cloudinary": "^1.40.0",
+    "express-rate-limit": "^6.10.0",
+    "morgan": "^1.10.0",
+    "validator": "^13.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3",
+    "eslint": "^8.48.0"
+  }
+}
+```
 ```json
 {
   "semi": true,
