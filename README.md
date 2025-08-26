@@ -1,36 +1,3 @@
-# Projeto: Aplicativo de Turismo Regional com React Native e Node.js
-
-## Sobre
-Este projeto tem como objetivo desenvolver um sistema completo para **centralizar informações turísticas** de regiões do interior de São Paulo.  
-O aplicativo permite **montar e pesquisar roteiros turísticos, compartilhar experiências, avaliar atrações e eventos**, além de disponibilizar um espaço colaborativo entre **usuários, guias, empreendedores locais e instituições públicas**.  
-
-Com a integração de tecnologias modernas e uma arquitetura escalável, o projeto busca entregar uma solução robusta para **turismo rural, cultural e corporativo**, promovendo a economia local e melhorando a experiência dos visitantes.
-
----
-
-## Repositório
-### O projeto é dividido em dois módulos principais:
-- **turismo-frontend**: Responsável pelo aplicativo mobile em React
-
-
-
-
-
-
-
-Perguntar ao ChatGPT
-Você disse:
-outra coisa, preciso que vc tmb no final as boas praticas pra outras coisa, como nomes de arquivos e talz, 
-
-
-O ChatGPT disse:
-Perfeito 🚀 Você quer o README do seu projeto de Turismo já com um guia de boas práticas no final (padrões de código, nomes de arquivos, commits etc).
-
-Aqui está ele completinho em código pronto para colar no GitHub:
-
-markdown
-Copiar
-Editar
 # 🌍 Projeto: Aplicativo de Turismo Regional com React Native e Node.js
 
 ## 📖 Sobre
